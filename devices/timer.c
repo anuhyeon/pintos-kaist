@@ -72,9 +72,9 @@ timer_calibrate (void) {
 
 /* Returns the number of timer ticks since the OS booted. */
 int64_t
-timer_ticks (void) {
+timer_ticks (void) { // 운영체제가 부팅괸 이우호 경과한 타이머 틱수를 반환현재 ticks 값을 반환
 	enum intr_level old_level = intr_disable ();
-	int64_t t = ticks;
+	int64_t t = ticks; // ticks는 전역 변수 -> 핀토스 내부에서 시간을 나타내기 위한 값으로 부팅 이후에 10ms마다 1씩 증가
 	intr_set_level (old_level);
 	barrier ();
 	return t;
@@ -83,18 +83,24 @@ timer_ticks (void) {
 /* Returns the number of timer ticks elapsed since THEN, which
    should be a value once returned by timer_ticks(). */
 int64_t
-timer_elapsed (int64_t then) {
+timer_elapsed (int64_t then) { // then(특정 시간)이후로 경과된 시간을 반환
 	return timer_ticks () - then;
 }
 
-/* Suspends execution for approximately TICKS timer ticks. */
-void
-timer_sleep (int64_t ticks) {
-	int64_t start = timer_ticks ();
 
-	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+/* Suspends execution for approximately TICKS timer ticks. */ //1tick이 경과 할때 마다 타이머 인터럽트 발생
+void 
+timer_sleep (int64_t ticks) { // 스레드를 특정시간동안 대기 상태(block state)로 만들어주는 함수 , ticks라는 인자를 받음. 이 값은 스레드가 얼마나 오랫동안 대기할지를 나타내는 시간(타이머 틱 단위)을 의미
+	int64_t start = timer_ticks (); // start에 시스템의 현재 시간(ticks)을 나타냄 timer_sleep 함수가 호출되었을 때의 현재 시간을 나타냄
+
+	ASSERT (intr_get_level () == INTR_ON); // 인터럽트가 활성화 되어있지 않으면 assert 경고 INTR_ON은 인터럽트가 활성화 되어있음을 나타냄.
+	//while (timer_elapsed (start) < ticks) // busy waiting 발생, timer_elapsed(start)의 반환값이 ticks보다 작은 동안 계속 실행됨. timer_elapsed(start)는 start로부터 지난 시간을 반환. 즉, 이 루프는 스레드가 지정된 시간만큼 대기하도록 합
+	//	thread_yield (); // thread_yield() 함수는 현재 스레드가 CPU를 포기하고 준비 상태의 다른 스레드에게 실행을 넘기도록 함. 이는 현재 스레드를 준비 큐의 끝에 다시 넣음.
+
+	if(timer_elapsed(start) < ticks){
+		thread_sleep(start + ticks);
+	}
+
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -121,11 +127,12 @@ timer_print_stats (void) {
 	printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
 
-/* Timer interrupt handler. */
+/* Timer interrupt handler. 1tick이 경과 할 때마다 타이머 인터럽트 발생, 이 타이머 인터럽트가 발생할 때 awake 작업을 포함 시키면 ticks가 증가 할때 마다 깨워야할 스레드가 있는지 찾고, 깨워주는 작업을 진행할 수 있음.  */ 
 static void
-timer_interrupt (struct intr_frame *args UNUSED) {
-	ticks++;
-	thread_tick ();
+timer_interrupt (struct intr_frame *args UNUSED) {  // imer_interrupt 함수는 운영 체제의 타이머 인터럽트 핸들러로 사용됨. 이 함수는 시스템 타이머가 정해진 시간마다 인터럽트를 발생시킬 때 호출되어, 시스템의 시간 관리와 스레드 스케줄링을 관리
+	ticks++; //타이머 인터럽트가 발생 할 때 마다 1tick 증가 -> 시스템이 시작된 이후로 경과한 총 타이머 틱의 수를 추적하는 역할.
+	thread_tick (); // 이 함수는 현재 실행 중인 스레드에 대한 타이머 틱 처리를 수행. 예를 들어, 스레드의 시간 할당량(time quantum)을 감소시키거나, 스레드의 상태를 관리하는 데 사용될 수 있음.
+	thread_awake(ticks); // ticks 값을 기반으로 대기 중인 스레드 중에서 깨워야 할 스레드가 있는지를 확인하고, 깨워야 할 시간이 도달한 스레드를 준비 상태로 변경
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

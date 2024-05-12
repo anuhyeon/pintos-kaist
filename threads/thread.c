@@ -14,7 +14,6 @@
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
-
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
@@ -39,6 +38,9 @@ static struct lock tid_lock;
 
 /* Thread destruction requests */
 static struct list destruction_req;
+
+/*Define Sleep Queue*/ 
+static struct list sleep_list; // block 상태가 된 스레드를 따로 관리하는 sleep 상태의 스레들로만 이루어진 리스트 선언
 
 /* Statistics. */
 static long long idle_ticks;    /* # of timer ticks spent idle. */
@@ -109,6 +111,7 @@ thread_init (void) {
 	lock_init (&tid_lock);
 	list_init (&ready_list);
 	list_init (&destruction_req);
+	list_init (&sleep_list);
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -292,20 +295,48 @@ thread_exit (void) {
 	NOT_REACHED ();
 }
 
+/*추가한 코드*/
+void 
+thread_sleep(int64_t ticks){ // 현재 스레드를 지정된 틱(ticks)까지 잠자게 만드는 역할 (스레드를 대기상태로 만드는 함수)
+	struct thread *curr = thread_current (); // !! 현재 실행중인 스레드의 정보 가져옴, 현재 실행 중인 스레드의 포인터 반환
+	enum intr_level old_level;  // !! 아래 주석과 동일
+	ASSERT (!intr_context ()); // !! 이 코드가 실행되는 시점에 인터럽트를 처리중이 아님을 확인
+	old_level = intr_disable (); // !!현재 인터럽트를 비활성화
+	if (curr != idle_thread) // !! 현재 스레드가 idle 스레드(즉, 아무 작업도 하지 않는 스레드)가 아니라면, 
+		list_push_back (&sleep_list, &curr->elem); // 현재 스레드를 대기 상태의 스레드 리스트(sleep_list)의 끝에 추가한다.
+		curr -> wakeup_tick = ticks; // 자신이 잠들고 깨어날 시각(몇시에 깰지)을 저장
+	thread_block();//do_schedule(THREAD_BLOCKED); // 스레드의 상태를 THREAD_BLOCKED로 변경, 스케줄러에게 스레드 전환을 요청.
+	intr_set_level (old_level); // !! 아래 주석과 동일
+}	
+
+void
+thread_awake (int64_t ticks){ // 주어진 ticks 시각에 도달했을 때 잠들어 있는(sleeping)스레들을 깨우는 역할을 한다.
+	struct list_elem * e = list_begin(&sleep_list); //sleep_list의 첫번째 요소(스레드)를 가리키는 포인터(반복자,iterator)를 e에 저장
+	while (e != list_end (&sleep_list)){ // sleep_list의 끝을 가리키는 반복자(iterator)를 얻음. 이 반복자는 리스트의 실제 끝 요소 다음을 가리키므로, 리스트의 끝을 확인할 때 사용됨. ->  리스트의 시작부터 끝까지 반복하면서 각 스레드의 wakeup_tick을 확인, wakeup_tick은 해당 스레드가 깨어나야 할 시간(타이머 틱)을 나타냄.
+    	struct thread *t = list_entry (e, struct thread, elem); // e포인터(리스트의 현재 요소를 가리키는)를 사용하여, 해당 요소를 포함하고 있는 struct thread구조체의 시작 주소를 얻음. 즉, 리스트에 있는 elem 요소로 부터 원래의 thread 구조체의 접근 가능
+    	if (t->wakeup_tick <= ticks){	// 스레드가 일어날 시간이 되었는지 확인(현재 시각이 일어날 시각보다 지난 경우) ->  wakeup_tick(일어날 시간)이 주어진 ticks(현재 시간을 나타내는 타이머 틱)보다 작거나 같은지 비교, 이 조건이 참이면 스레드가 깨어날 시간임을 의미
+      		e = list_remove (e);	// 해당 요소를 sleep list 에서 제거 
+      		thread_unblock (t);	// 해당 스레드를 unblock상태로 만듦 -> Unblock상태의 스레드는 실행을 위해 준비된 상태가 되며, 스케줄러에 의해 실행가능한 상태이다.
+    }
+    else // 현재 검사 중인 스레드의 wakeup_tick이 아직 도달하지 않았다면, 다음 스레드로 넘어감.  list_next(e)를 통해 다음 요소로 반복자를 이동시킵니다.
+      e = list_next (e); //다음 스레드로 넘어감.  list_next(e)를 통해 다음 요소로 반복자를 이동시킴.
+  }
+}
+
 /* Yields the CPU.  The current thread is not put to sleep and
    may be scheduled again immediately at the scheduler's whim. */
 void
 thread_yield (void) {
-	struct thread *curr = thread_current ();
-	enum intr_level old_level;
+	struct thread *curr = thread_current (); //현재 실행 중인 스레드의 정보를 가져옴. thread_current() 함수는 현재 실행 중인 스레드의 포인터를 반환
+	enum intr_level old_level; // intr_level은 인터럽트 레벨을 나타내는 열거형(enum) 타입. 이 변수는 현재 인터럽트 상태를 저장하는 데 사용
+	//intr_context() 함수는 시스템이 현재 인터럽트 처리 중인지 아닌지 확인하는 함수 -> 인터럽트 처리중이면 True 반환 , 인터럽트 처리 중이 아니면 False 반환
+	ASSERT (!intr_context ()); // 괄호 안의 조건이 참이 아닐 경우 프로그램 실행을 중단 + intr_context()함수가 false를 반환해야함. 이 코드가 실행되는 시점에 인터럽트를 처리 중이 아님을 확인
 
-	ASSERT (!intr_context ());
-
-	old_level = intr_disable ();
-	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
-	do_schedule (THREAD_READY);
-	intr_set_level (old_level);
+	old_level = intr_disable (); // 현재 인터럽트를 비활성화하고 이전 인터럽트 상태(레벨에는 인터럽트 활성 , 비활성 2개의 레벨이 존재)를 반환한다(이전 인터럽트 상태는 당연히 활성이니깐 당연히 활성을 반환, 이따가 다시 활성 시켜야하므로 따로 저장). -> 코드 실행 도중 인터럽트에 의해 중단되지 않도록 보장하기 위해서
+	if (curr != idle_thread) // 현재 실행중인 스레드가 idle 스레드(즉, 아무 작업도 하지 않는 스레드)가 아니라면, 
+		list_push_back (&ready_list, &curr->elem); // 현재 스레드를 준비 상태의 스레드 목록(ready list)의 끝에 추가한다. 이로써 현재 스레드는 나중에 다시 실행될 수 있게 된다.
+	do_schedule (THREAD_READY); // do_schedule 함수를 호출하여 스레드의 상태를 THREAD_READY로 변경하고 스케줄러에게 스레드 전환을 요청. 이는 실제로 다음 스레드로의 전환을 담당하는 부분
+	intr_set_level (old_level); // 이전에 저장해 둔 인터럽트 레벨을 복원한다. 이로써 함수 실행 전의 인터럽트 활성 상태로 되돌아간다.
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
@@ -527,37 +558,37 @@ thread_launch (struct thread *th) {
  * It's not safe to call printf() in the schedule(). */
 static void
 do_schedule(int status) {
-	ASSERT (intr_get_level () == INTR_OFF);
-	ASSERT (thread_current()->status == THREAD_RUNNING);
-	while (!list_empty (&destruction_req)) {
-		struct thread *victim =
-			list_entry (list_pop_front (&destruction_req), struct thread, elem);
-		palloc_free_page(victim);
+	ASSERT (intr_get_level () == INTR_OFF); // 인터럽트 비활성화 되었는지 확인 -> 스케줄링 도중 인터럽트에 의한 다른 스케줄링 요청이 발생하지 않도록 -> 스케줄링 과정의 일관성 보장
+	ASSERT (thread_current()->status == THREAD_RUNNING); // 현재 실행중임을 확인 -> 이는 스케줄링 함수가 실행중인 스레드에 대해서만 호출 되어야만 함.
+	while (!list_empty (&destruction_req)) { // destruction_req에는 종료 되어 더이상 필요하지 않아 파괴되어야할 스레드에 대한 정보를 담고 있는 구조체 포인터가 담겨 있음. -> 해제 되어야할 스레드가 존재하는 동안 계속 반복해서 실행됨.
+		struct thread *victim =  
+			list_entry (list_pop_front (&destruction_req), struct thread, elem); // list_pop_front는 destruction_req리스트의 가장 맨 앞에 있는 요소를 제거하고 그 요소의 주소를 반환, destrcution_req리스트 요소의 주소가 아닌 해당 요소가 가리키는 구조체의 주소로 변환 -> Victim은 리스트 요소의 실제 스레드의 주소를 가지게 됨
+		palloc_free_page(victim); // victim은 이제 해제될 스레드를 가리키게 되고 palloc_free_page를 통해서 할당된 메모리 해제
 	}
-	thread_current ()->status = status;
-	schedule ();
+	thread_current ()->status = status; // 현재 실행중인 스레드의 상태를 인자로 받은 status로 변경
+	schedule (); // 실제로 스레드를 교체하는 역할을 함. -> 현재 실행중인 스레드에서 다음에 실행할 스레드로의 전환을 담당.
 }
 
 static void
-schedule (void) {
-	struct thread *curr = running_thread ();
-	struct thread *next = next_thread_to_run ();
+schedule (void) { 
+	struct thread *curr = running_thread (); // 현재 실행 중인 스레드의 포인터를 반환받아 curr 변수에 저장
+	struct thread *next = next_thread_to_run (); // 다음에 실행될 스레드의 포인터를 반환받아 next 변수에 저장
 
-	ASSERT (intr_get_level () == INTR_OFF);
-	ASSERT (curr->status != THREAD_RUNNING);
-	ASSERT (is_thread (next));
+	ASSERT (intr_get_level () == INTR_OFF); // 인터럽트 비활성화 되었는지 확인 -> 스케줄링 도중에 인터럽트가 발생하면 안되니깐
+	ASSERT (curr->status != THREAD_RUNNING); // 현재 스레드(curr)의 상태가 실행중이 아님을 확인 -> 현재 스레드가 '실행 중' 상태에서 빠져나와 다른 상태(예: 대기)로 전환된 후에 다음 스레드로 교체될 준비가 되어 있는지 확인하는 역할이라고 보면됨.
+	ASSERT (is_thread (next)); // 다음에 실행될 스레드의 포인터(next)가 실제로 스레드인지 확인(next가 유효한 스레드 객체(인스턴스)인지 판단) ->  next가 스레드 구조체의 인스턴스인지, 그리고 그 인스턴스가 유효한 상태인지 검사
 	/* Mark us as running. */
-	next->status = THREAD_RUNNING;
+	next->status = THREAD_RUNNING; // 다음에 실행될 스레드의 상태를 실행 중(THREAD_RUNNING)으로 상태 변경
 
 	/* Start new time slice. */
-	thread_ticks = 0;
+	thread_ticks = 0; //thread_ticks에는 "마지막으로 스레드가 CPU 사용을 양보(yield)한 이후부터 경과한 타이머 틱의 수"를 저장 새로운 스레드의 실행 시간을 측정하기 위해서 변수를 0으로 초기화 -> 스레드가 실행되는 동안 경과한 틱의 수를 추적.
 
-#ifdef USERPROG
+#ifdef USERPROG // 사용자 수준 프로그램(USERPROG)을 지원하는 경우에만 활성화
 	/* Activate the new address space. */
-	process_activate (next);
+	process_activate (next); //다음에 실행될 스레드(next)의 주소 공간을 활성화 -> 프로세스의 컨텍스트를 새로운 스레드에 맞게 설정
 #endif
 
-	if (curr != next) {
+	if (curr != next) { // 현재 실행 중인 스레드(curr)와 다음에 실행될 스레드(next)가 서로 다를 때만 내부의 코드 실행 -> 같은 스레드가 실행되는 경우 아래 작업 패스
 		/* If the thread we switched from is dying, destroy its struct
 		   thread. This must happen late so that thread_exit() doesn't
 		   pull out the rug under itself.
@@ -565,14 +596,14 @@ schedule (void) {
 		   currently used by the stack.
 		   The real destruction logic will be called at the beginning of the
 		   schedule(). */
-		if (curr && curr->status == THREAD_DYING && curr != initial_thread) {
-			ASSERT (curr != next);
-			list_push_back (&destruction_req, &curr->elem);
+		if (curr && curr->status == THREAD_DYING && curr != initial_thread) {// 현재 스레드가 유효하고, 종료 상태에 있고, 초기 스레드가 아닌지를 확인
+			ASSERT (curr != next); 
+			list_push_back (&destruction_req, &curr->elem); // 현재 스레드의 구조체를 나중에 파괴하기 위해 파괴 요청 목록에 추가
 		}
 
 		/* Before switching the thread, we first save the information
 		 * of current running. */
-		thread_launch (next);
+		thread_launch (next); //  함수는 실제로 현재 스레드에서 다음 스레드(next)로 컨텍스트 스위치를 수행 , 이 함수는 현재 실행 중인 스레드의 상태를 저장하고, 다음 스레드의 상태를 복원하여 CPU 제어권을 이전하는 작업을 포함
 	}
 }
 
