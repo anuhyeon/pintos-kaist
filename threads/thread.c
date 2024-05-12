@@ -39,8 +39,10 @@ static struct lock tid_lock;
 /* Thread destruction requests */
 static struct list destruction_req;
 
-/*Define Sleep Queue*/ 
+/*Define Sleep Queue 추가*/ 
 static struct list sleep_list; // block 상태가 된 스레드를 따로 관리하는 sleep 상태의 스레들로만 이루어진 리스트 선언
+static int64_t min_tick_to_awake; //  sleep_list에서 대기중인 스레드들의 wakeup_tick 값 중 최솟값을 저장하기 위한 변수 추가
+
 
 /* Statistics. */
 static long long idle_ticks;    /* # of timer ticks spent idle. */
@@ -50,6 +52,8 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 /* Scheduling. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
+
+
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -64,6 +68,7 @@ static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
+
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -295,31 +300,61 @@ thread_exit (void) {
 	NOT_REACHED ();
 }
 
+//ㅑ
+
 /*추가한 코드*/
+void update_min_tick_to_awake(int64_t ticks){ // 잠을 자고 있는 스레드들 중에서 최소 틱값으로 전역변수(min_tick_to_awake) 업데이트 
+	// min_tick_to_awake를 깨워야 할 스레드(잠자고 있는 스레드) 중 가장 작은 tick을 갖도록 업데이트 한다. 
+	min_tick_to_awake = (min_tick_to_awake > ticks) ? ticks : min_tick_to_awake;
+}
+// min_tick_to_awake를 static한 변수로 선언했으므로 전역변수여도 다른 소스파일에서는 사용 불가 따라서 return해주는 함수로 구현을 해주어야함. 
+int64_t get_min_tick_to_awake(void){
+	return min_tick_to_awake;
+}
+
+
 void 
 thread_sleep(int64_t ticks){ // 현재 스레드를 지정된 틱(ticks)까지 잠자게 만드는 역할 (스레드를 대기상태로 만드는 함수)
 	struct thread *curr = thread_current (); // !! 현재 실행중인 스레드의 정보 가져옴, 현재 실행 중인 스레드의 포인터 반환
 	enum intr_level old_level;  // !! 아래 주석과 동일
 	ASSERT (!intr_context ()); // !! 이 코드가 실행되는 시점에 인터럽트를 처리중이 아님을 확인
 	old_level = intr_disable (); // !!현재 인터럽트를 비활성화
-	if (curr != idle_thread) // !! 현재 스레드가 idle 스레드(즉, 아무 작업도 하지 않는 스레드)가 아니라면, 
+	if (curr != idle_thread){ // !! 현재 스레드가 idle 스레드(즉, 아무 작업도 하지 않는 스레드)가 아니라면,
+		update_min_tick_to_awake(ticks); // 현재의 thread의 wakeup_ticks에 인자로 들어온 ticks를 저장 
 		list_push_back (&sleep_list, &curr->elem); // 현재 스레드를 대기 상태의 스레드 리스트(sleep_list)의 끝에 추가한다.
 		curr -> wakeup_tick = ticks; // 자신이 잠들고 깨어날 시각(몇시에 깰지)을 저장
+	}
 	thread_block();//do_schedule(THREAD_BLOCKED); // 스레드의 상태를 THREAD_BLOCKED로 변경, 스케줄러에게 스레드 전환을 요청.
 	intr_set_level (old_level); // !! 아래 주석과 동일
-}	
+}
+	
 
 void
 thread_awake (int64_t ticks){ // 주어진 ticks 시각에 도달했을 때 잠들어 있는(sleeping)스레들을 깨우는 역할을 한다.
+	min_tick_to_awake = INT64_MAX; // sleep_list에서 최소틱을 가진 스레드가 깨워지고 리스트에서 삭제가 되어도 전역변수  min_tick_to_awake 변수에는 삭제가 이루어진 스레드의 최소 틱을 가지게 되버리기 때문에 계속 else구문에 있는 update_min_tick_to_awake함수에서 최솟 값이 업데이트가 안되기 때문에  thread_awake() 를 시작할 때 최대값으로 초기화진행
 	struct list_elem * e = list_begin(&sleep_list); //sleep_list의 첫번째 요소(스레드)를 가리키는 포인터(반복자,iterator)를 e에 저장
+	printf("--------------------------wakeup time: %lld---------------------------\n",ticks);
 	while (e != list_end (&sleep_list)){ // sleep_list의 끝을 가리키는 반복자(iterator)를 얻음. 이 반복자는 리스트의 실제 끝 요소 다음을 가리키므로, 리스트의 끝을 확인할 때 사용됨. ->  리스트의 시작부터 끝까지 반복하면서 각 스레드의 wakeup_tick을 확인, wakeup_tick은 해당 스레드가 깨어나야 할 시간(타이머 틱)을 나타냄.
     	struct thread *t = list_entry (e, struct thread, elem); // e포인터(리스트의 현재 요소를 가리키는)를 사용하여, 해당 요소를 포함하고 있는 struct thread구조체의 시작 주소를 얻음. 즉, 리스트에 있는 elem 요소로 부터 원래의 thread 구조체의 접근 가능
-    	if (t->wakeup_tick <= ticks){	// 스레드가 일어날 시간이 되었는지 확인(현재 시각이 일어날 시각보다 지난 경우) ->  wakeup_tick(일어날 시간)이 주어진 ticks(현재 시간을 나타내는 타이머 틱)보다 작거나 같은지 비교, 이 조건이 참이면 스레드가 깨어날 시간임을 의미
+    	printf("name : %s\n" ,t->name);
+		if (t->wakeup_tick <= ticks){	// 스레드가 일어날 시간이 되었는지 확인(현재 시각이 일어날 시각보다 지난 경우) ->  wakeup_tick(일어날 시간)이 주어진 ticks(현재 시간을 나타내는 타이머 틱)보다 작거나 같은지 비교, 이 조건이 참이면 스레드가 깨어날 시간임을 의미
       		e = list_remove (e);	// 해당 요소를 sleep list 에서 제거 
+			printf("<깨어야할 스레드>\n");
+			printf("ticks(t->wakeup_tick) of thread for waking up is: %lld\n", t->wakeup_tick);
+			printf("current min ticks is: %lld\n",get_min_tick_to_awake());
+			printf("now sleeplist size is : %ld\n\n", list_size(&sleep_list));
       		thread_unblock (t);	// 해당 스레드를 unblock상태로 만듦 -> Unblock상태의 스레드는 실행을 위해 준비된 상태가 되며, 스케줄러에 의해 실행가능한 상태이다.
-    }
-    else // 현재 검사 중인 스레드의 wakeup_tick이 아직 도달하지 않았다면, 다음 스레드로 넘어감.  list_next(e)를 통해 다음 요소로 반복자를 이동시킵니다.
-      e = list_next (e); //다음 스레드로 넘어감.  list_next(e)를 통해 다음 요소로 반복자를 이동시킴.
+    		
+			}
+    	else{ // 현재 검사 중인 스레드의 wakeup_tick이 아직 도달하지 않았다면, 다음 스레드로 넘어감.  list_next(e)를 통해 다음 요소로 반복자를 이동시킵니다.
+      		printf("<아직 깰 필요 없는 스레드, min_tick 업데이트>\n");
+			printf("ticks(t->wakeup_tick) of thread for waking up is: %lld\n", t->wakeup_tick);
+			update_min_tick_to_awake(t->wakeup_tick);// 함수가 else 구문에 있는 이유는, 깨어나야 할 시간(tick)이 아직 되지 않은 스레드들에 대해서만 다음 깨어날 시간을 업데이트하기 위함
+			printf("current min ticks is: %lld\n",get_min_tick_to_awake());
+			printf("now sleeplist size is : %ld\n\n", list_size(&sleep_list));
+
+			e = list_next (e); //다음 스레드로 넘어감.  list_next(e)를 통해 다음 요소로 반복자를 이동시킴.
+		}
   }
 }
 

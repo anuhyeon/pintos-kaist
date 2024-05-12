@@ -173,6 +173,8 @@ void thread_yield (void);
 //추가
 void thread_sleep(int64_t ticks);
 void thread_awake(int64_t ticks);
+int64_t get_min_tick_to_awake(void);
+void update_min_tick_to_awake(int64_t ticks);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
