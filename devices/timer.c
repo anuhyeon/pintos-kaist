@@ -137,7 +137,7 @@ timer_interrupt (struct intr_frame *args UNUSED) {  // imer_interrupt 함수는 
 	// sleep_list에서 대기중인 스레드들의 wakeup_tick값 중 최솟값을 사용하여 불필요하게 타이머 인터럽트가 발생할 때 마다 thead_wake함수를 호출하여 대기 큐를 확인 하지 않도록 하는 방법
 	int64_t min_tick_to_awake = get_min_tick_to_awake();
 	if (min_tick_to_awake <= ticks){  //현재 시간이 잠자고 있는 스레드들 중에서 깨워야 할 시각보다 크면 thread_awake함수 호출 아니면 호출X
-		printf("--------------os_ticks: %lld",ticks);
+		//printf("--------------os_ticks: %lld",ticks);
 		thread_awake(ticks);
 	}
 }

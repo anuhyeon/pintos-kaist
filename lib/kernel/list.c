@@ -159,7 +159,7 @@ list_insert (struct list_elem *before, struct list_elem *elem) {
 	ASSERT (elem != NULL);
 
 	elem->prev = before->prev;
-	elem->next = before;
+	elem->next = before; // elem은 e의 앞에 삽입
 	before->prev->next = elem;
 	before->prev = elem;
 }
@@ -417,17 +417,19 @@ list_sort (struct list *list, list_less_func *less, void *aux) {
    Runs in O(n) average case in the number of elements in LIST. */
 void
 list_insert_ordered (struct list *list, struct list_elem *elem,
-		list_less_func *less, void *aux) {
+		list_less_func *less, void *aux) { // less (elem, e, aux) 는 elem > e 일 때 true 를 반환하는 함수로 우리가이 less를 만들어서(thread.c파일에) 인자로 전달 해주어야함.
 	struct list_elem *e;
 
 	ASSERT (list != NULL);
 	ASSERT (elem != NULL);
 	ASSERT (less != NULL);
 
-	for (e = list_begin (list); e != list_end (list); e = list_next (e))
-		if (less (elem, e, aux))
+	for (e = list_begin (list); e != list_end (list); e = list_next (e)){
+		if (less (elem, e, aux)){ //  less (elem, e, aux) 는 elem > e 일 때 true 를 반환하는 함수 우리가 이 less를 만들어야함 ppt에서는 less함수가 cmp_priority로 되어있음.
 			break;
-	return list_insert (e, elem);
+		}
+	}
+	return list_insert (e, elem); // elem(새롭게 ready_list에 들어갈 친구)은 e(기존에 있던 친구)앞에 삽입
 }
 
 /* Iterates through LIST and removes all but the first in each

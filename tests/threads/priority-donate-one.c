@@ -24,17 +24,20 @@ test_priority_donate_one (void)
   struct lock lock;
 
   /* This test does not work with the MLFQS. */
-  ASSERT (!thread_mlfqs);
+  ASSERT (!thread_mlfqs); // 이 테스트는 멀티 레벨 피드백 큐 스켖줄러가 활성화 되지 않았을 경우만 실행, 이유는 MLFGS에서는 우선순위가 동적으로 조정되기 때문
 
   /* Make sure our priority is the default. */
-  ASSERT (thread_get_priority () == PRI_DEFAULT);
+  ASSERT (thread_get_priority () == PRI_DEFAULT);  // 31스레드 메인스레드
 
-  lock_init (&lock);
-  lock_acquire (&lock);
-  thread_create ("acquire1", PRI_DEFAULT + 1, acquire1_thread_func, &lock);
+  lock_init (&lock); 
+  lock_acquire (&lock); // 31 메인스레드가 락 획득
+  thread_create ("acquire1", PRI_DEFAULT + 1, acquire1_thread_func, &lock); // 31 메인스레드가 32 스레드 생성하고 우선순위로 CPU 점유해서 31스레드에서 acquire1_thread_func을 실행 하지만 락을 메인이 사용하고 있어서 acquire1_thread_func내 lock_acquire (lock)내 sema_down()내 while문안에서 waiter에 들어가고, block상태가 되어버림.   "acquire1"이라는 이름의 새 스레드를 생성하고, 이 스레드에게 lock을 인자로 전달. 이 스레드의 우선순위는 기본 우선순위보다 1 높음.
   msg ("This thread should have priority %d.  Actual priority: %d.",
-       PRI_DEFAULT + 1, thread_get_priority ());
+       PRI_DEFAULT + 1, thread_get_priority ()); // 
+  //printf("현재 실행중인 스레드: %s\n", thread_current()->name);
   thread_create ("acquire2", PRI_DEFAULT + 2, acquire2_thread_func, &lock);
+  //printf("현재 실행중인 스레드: %s\n", thread_current()->name);
+
   msg ("This thread should have priority %d.  Actual priority: %d.",
        PRI_DEFAULT + 2, thread_get_priority ());
   lock_release (&lock);

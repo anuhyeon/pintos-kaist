@@ -132,6 +132,26 @@ struct thread { // 각 스레드나 사용자 프로세스를 관리하기 위�
 
 	int64_t wakeup_tick; // 스레드마다 일어나야 하는 시간에 대한 정보를 담고 있어야하는데 이르 wakeup변수에 저장 
 
+	/*------------PROJECT1 priority-inversion(donation)-----------*/
+	// 각 스레드가 양도 받은 내역을 관리할 수 있도록 thread의 구조체를 변경해 줄 필요가 있음.
+	int init_priority; // 스레드가 priority를 양도받았다가 다시 반납할 때 원래의 priority를 복원할 수 있도록 고유의 priority 값을 저장하는 변수
+
+	struct lock *wait_on_lock; // 스레드가 현재 얻기 위해 기다리고 있는 lock 으로 스레드는 이 lock 이 release 되기를 기다림.
+	struct list donations;// 자신에게 priority를 기부해준 스레드들의 리스트(multiple donation을 고려하기 위해 사용)
+	struct list_elem donation_elem; // donation 리스트를 관리하기 위한 element 로 thread 구조체의 그냥 elem 과 구분하여 사용할 것(multiple donation을 고려하기 위해 사용)
+	// donations는 리스트를 관리하는 구조체이고, donation_elem은 리스트의 각 요소를 관리하는 구조체
+	/*
+	t->donation_elem: struct thread 구조체 내의 멤버로, 
+	이 스레드가 다른 스레드의 donations 리스트에 들어갈 때 사용된다. 
+	이는 이 스레드가 기부자(donor)로서 기부 정보로 사용되는 리스트 요소이다.
+
+	t->donations: struct thread 구조체 내의 멤버로, 
+	이 스레드가 받은 우선 순위 기부들을 추적하는 리스트입. 
+	이는 이 스레드가 수혜자(donee)로서, 다른 스레드들이 자신에게 기부한 우선 순위 정보를 저장.
+	
+	즉, A라는 스레드가 B스레드에게 우선순위를 양보를 하면
+	B스레드의 donations에는 A라는 스레드의 A스레드의 donation_elem 와 다른 기부자들의 donations_elem이 정렬되어 저장되어있음.
+	*/
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
@@ -170,14 +190,24 @@ const char *thread_name (void);
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
 
-//추가
+//project_1 (Alam_Clock)
 void thread_sleep(int64_t ticks);
 void thread_awake(int64_t ticks);
 int64_t get_min_tick_to_awake(void);
 void update_min_tick_to_awake(int64_t ticks);
+//project_1 (Priority_Scheduling)
+void max_priority_in_ready_preemption(void); //CPU를 실행중인 스레드의 우선순위가 바뀌거나 ready_list에 새로운 스레드가 들어오는 경우 함수 호출하면 됨. 현재 수행중인 스레드와 ready_list에 있는 스레드 중 우선순위가 가장 높은 스레드를 비교하여 스케줄링
+bool cmp_priority(const struct list_elem *new_elem,const struct list_elem *e, void *aux UNUSED); // 새롭게 들어온 new_elem스레드와 기존에 있던 e스레드와 우선순위 비교하여 true / false 반환
+//project_1 (Priority_Scheduling) - donation
+void donate_priority (void); 
+void reset_priority (void); // donations리스트 sort후 가장 높은 스레드의 우선순위로 락홀더의 우선순위를 바꾸어줌
+void remove_with_lock (struct lock *lock); // 락을 해제하면 해당 락을 
+bool thread_cmp_donate_priority (const struct list_elem *l, const struct list_elem *s, void *aux UNUSED);
+bool cmp_sema_priority (const struct list_elem *l, const struct list_elem *s, void *aux);
 
-int thread_get_priority (void);
-void thread_set_priority (int);
+
+int thread_get_priority (void); // 실행중인 스레드의 우선순위를 반환하는 함수
+void thread_set_priority (int); // 실행중인 스레드의 우선순위를 변경하는 함수
 
 int thread_get_nice (void);
 void thread_set_nice (int);
