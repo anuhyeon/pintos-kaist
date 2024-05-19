@@ -262,7 +262,9 @@ intr_context (void) {
 /* During processing of an external interrupt, directs the
    interrupt handler to yield to a new process just before
    returning from the interrupt.  May not be called at any other
-   time. */
+   time. 인터럽트 핸들러가 반환될 때 스케줄러를 호출하도록 설정하는 함수 
+   즉, 현재 인터럽트 컨텍스트에서 직접 스위칭을 하지 않고, 안전하게 인터럽트가 끝난 후 스위칭을 수행 할 수 있도록 함.
+   */
 void
 intr_yield_on_return (void) {
 	ASSERT (intr_context ());

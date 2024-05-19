@@ -361,28 +361,19 @@ void
 thread_awake (int64_t ticks){ // 주어진 ticks 시각에 도달했을 때 잠들어 있는(sleeping)스레들을 깨우는 역할을 한다.
 	min_tick_to_awake = INT64_MAX; // sleep_list에서 최소틱을 가진 스레드가 깨워지고 리스트에서 삭제가 되어도 전역변수  min_tick_to_awake 변수에는 삭제가 이루어진 스레드의 최소 틱을 가지게 되버리기 때문에 계속 else구문에 있는 update_min_tick_to_awake함수에서 최솟 값이 업데이트가 안되기 때문에  thread_awake() 를 시작할 때 최대값으로 초기화진행
 	struct list_elem * e = list_begin(&sleep_list); //sleep_list의 첫번째 요소(스레드)를 가리키는 포인터(반복자,iterator)를 e에 저장
-	//printf("--------------------------wakeup time: %lld---------------------------\n",ticks);
 	while (e != list_end (&sleep_list)){ // sleep_list의 끝을 가리키는 반복자(iterator)를 얻음. 이 반복자는 리스트의 실제 끝 요소 다음을 가리키므로, 리스트의 끝을 확인할 때 사용됨. ->  리스트의 시작부터 끝까지 반복하면서 각 스레드의 wakeup_tick을 확인, wakeup_tick은 해당 스레드가 깨어나야 할 시간(타이머 틱)을 나타냄.
     	struct thread *t = list_entry (e, struct thread, elem); // e포인터(리스트의 현재 요소를 가리키는)를 사용하여, 해당 요소를 포함하고 있는 struct thread구조체의 시작 주소를 얻음. 즉, 리스트에 있는 elem 요소로 부터 원래의 thread 구조체의 접근 가능
-    	//printf("name : %s\n" ,t->name);
 		if (t->wakeup_tick <= ticks){	// 스레드가 일어날 시간이 되었는지 확인(현재 시각이 일어날 시각보다 지난 경우) ->  wakeup_tick(일어날 시간)이 주어진 ticks(현재 시간을 나타내는 타이머 틱)보다 작거나 같은지 비교, 이 조건이 참이면 스레드가 깨어날 시간임을 의미
       		e = list_remove (e);	// 해당 요소를 sleep list 에서 제거 
-			//printf("<깨어야할 스레드>\n");
-			//printf("ticks(t->wakeup_tick) of thread for waking up is: %lld\n", t->wakeup_tick);
-			//printf("current min ticks is: %lld\n",get_min_tick_to_awake());
-			//printf("now sleeplist size is : %ld\n\n", list_size(&sleep_list));
-      		thread_unblock (t);	// 해당 스레드를 unblock상태로 만듦 -> Unblock상태의 스레드는 실행을 위해 준비된 상태가 되며, 스케줄러에 의해 실행가능한 상태이다.
-    		if(!thread_mlfqs){
-				max_priority_in_ready_preemption();
-			}
+		
+      		/*인터럽트 컨텍스트에서 직접 thread_yield()를 호출하지 않고, 안전하게 인터럽트 핸들러가 종료된 후 스케줄링을 수행할 수 있도록 preemption()함수 사용 안했음*/
+			thread_unblock (t);	// 해당 스레드를 unblock상태로 만듦 -> Unblock상태의 스레드는 실행을 위해 준비된 상태가 되며, 스케줄러에 의해 실행가능한 상태이다.
+    		if (t->priority > thread_current()->priority) {
+                intr_yield_on_return(); // 우선순위 선점 필요 시 컨텍스트 스위치
+            	}
 			}
     	else{ // 현재 검사 중인 스레드의 wakeup_tick이 아직 도달하지 않았다면, 다음 스레드로 넘어감.  list_next(e)를 통해 다음 요소로 반복자를 이동시킵니다.
-      		//printf("<아직 깰 필요 없는 스레드, min_tick 업데이트>\n");
-			//printf("ticks(t->wakeup_tick) of thread for waking up is: %lld\n", t->wakeup_tick);
 			update_min_tick_to_awake(t->wakeup_tick);// 함수가 else 구문에 있는 이유는, 깨어나야 할 시간(tick)이 아직 되지 않은 스레드들에 대해서만 다음 깨어날 시간을 업데이트하기 위함
-			//printf("current min ticks is: %lld\n",get_min_tick_to_awake());
-			//printf("now sleeplist size is : %ld\n\n", list_size(&sleep_list));
-
 			e = list_next (e); //다음 스레드로 넘어감.  list_next(e)를 통해 다음 요소로 반복자를 이동시킴.
 		}
   }
@@ -791,7 +782,7 @@ reset_priority (void)
   struct thread *cur = thread_current (); // 현재스레드는 lock을 해제하고 기부받은 우선순위를 다시 자신의 우선순위로 바꾸려고 하는 스레드
   cur->priority = cur->init_priority; // 현재 스레드는 이제 자신의 원래 우선순위로 돌아와야함.
   if (!list_empty (&cur->donations)) { // 만약 자신에게 우선순위를 기부해준 기부자들이 아직 존재한다면(이 스레드는 락을 여러개 소유하고 있던 스레드였던 것) 남아 있는 기부자들 중에서 가장 높은 priority를 가져와야함.
-    //list_sort (&cur->donations, thread_cmp_donate_priority, NULL); // 남아있는 스레드들을 우선순위에 따라 정렬
+    list_sort (&cur->donations, thread_cmp_donate_priority, NULL); // 남아있는 스레드들을 우선순위에 따라 정렬
     struct thread *front = list_entry (list_front (&cur->donations), struct thread, donation_elem);//렬된 donations 리스트의 첫 번째 요소를 가져옴.
     if (front->priority > cur->priority) // 기부 받은 스레드 중 가장 높은 우선 순위를 가진 스레드의 우선 순위가 현재 스레드의 초기 우선 순위보다 높은지 확인
       cur->priority = front->priority; // 만약 기부 받은 우선 순위가 현재 스레드의 초기 우선 순위보다 높다면, 현재 스레드의 우선 순위를 기부 받은 우선 순위로 업데이트
