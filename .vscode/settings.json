@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "intrinsic.h": "c",
+        "fsutil.h": "c",
+        "tss.h": "c",
+        "thread.h": "c"
+    }
+}

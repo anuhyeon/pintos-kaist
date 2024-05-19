@@ -233,8 +233,18 @@ lock_acquire (struct lock *lock) { // 는 스레드가 주어진 lock을 안전�
 	ASSERT (lock != NULL); // 안전 체크
 	ASSERT (!intr_context()); // 현재 코드가 인터럽트 내부에서 실행되지 않음을 확인. lock_acquire 함수는 스레드가 대기 상태로 전환될 수 있기 때문에, 인터럽트 핸들러에서는 호출될 수 없음. 인터럽트 핸들러 내에서는 스레드를 대기 상태로 만들 수 없기 때문
 	ASSERT (!lock_held_by_current_thread (lock)); // 이 구문은 현재 스레드가 이미 lock을 보유하고 있지 않은지 확인 -> 재귀적 락 획득을 방지하기 위함, 이미 lock을 보유한 스레드가 다시 그 lock을 획득하려고 시도하는 경우를 막음.
+  
+   /*-----------------------------------project1 BSD mlfqs--------------------------------------*/
+   if (thread_mlfqs) {
+    sema_down (&lock->semaphore);
+    lock->holder = thread_current ();
+    return ;
+  }
+   /*-----------------------------------project1 BSD mlfqs--------------------------------------*/
+   
    /*------------------------project1 priority scheduling Donation------------------------------*/
    struct thread *cur = thread_current();
+
    if (lock->holder != NULL) { // lock을 누군가 점유하고 있으면
       cur->wait_on_lock = lock; // 현재 스레드는 나중에 사용하기 위해서 락을 저장
       list_insert_ordered (&lock->holder->donations, &cur->donation_elem, thread_cmp_donate_priority, NULL);
@@ -280,13 +290,22 @@ void
 lock_release (struct lock *lock) { // 현재 스레드가 소유하고 있는 락을 해제하는 코드
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock)); // 현재 스레드가 해당 LOCK을 실제로 소유하고 있는지확인(현재 스레드가 LOCK을 해제할 권한이 있는지를 검증)
+   /*----------------------------------project1 BSD scheduling---------------------------------------*/
+   lock->holder = NULL;
+   if (thread_mlfqs) {
+    sema_up (&lock->semaphore);
+    return ;
+  }
+   /*----------------------------------project1 BSD scheduling---------------------------------------*/
+
+   
    /*------------------------project1 priority scheduling Donation------------------------------*/
    remove_with_lock (lock);
    reset_priority();
    /*------------------------project1 priority scheduling Donation------------------------------*/
 
-	lock->holder = NULL; // 현재 스레드가 더 이상 lock을 소유하지 않음을 나타내기 위해, lock의 소유자(holder)를 NULL로 설정. 이것은 lock이 이제 다른 스레드에 의해 획득될 수 있음을 의미
-	sema_up (&lock->semaphore); //lock의 내부 semaphore에 대해 sema_up 함수를 호출. sema_up 함수는 semaphore의 value를 증가시키고, 만약 대기 중인 스레드가 있다면, 하나의 스레드를 대기 상태에서 깨워 lock을 획득하도록 함. 이 과정은 lock이 해제되었을 때, 대기 중인 다른 스레드가 lock을 획득할 수 있도록 보장.
+	//lock->holder = NULL; // 현재 스레드가 더 이상 lock을 소유하지 않음을 나타내기 위해, lock의 소유자(holder)를 NULL로 설정. 이것은 lock이 이제 다른 스레드에 의해 획득될 수 있음을 의미
+   sema_up (&lock->semaphore); //lock의 내부 semaphore에 대해 sema_up 함수를 호출. sema_up 함수는 semaphore의 value를 증가시키고, 만약 대기 중인 스레드가 있다면, 하나의 스레드를 대기 상태에서 깨워 lock을 획득하도록 함. 이 과정은 lock이 해제되었을 때, 대기 중인 다른 스레드가 lock을 획득할 수 있도록 보장.
 }
 
 /* Returns true if the current thread holds LOCK, false

@@ -132,6 +132,21 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED) {  // imer_interrupt 함수는 운영 체제의 타이머 인터럽트 핸들러로 사용됨. 이 함수는 시스템 타이머가 정해진 시간마다 인터럽트를 발생시킬 때 호출되어, 시스템의 시간 관리와 스레드 스케줄링을 관리
 	ticks++; //타이머 인터럽트가 발생 할 때 마다 1tick 증가 -> 시스템이 시작된 이후로 경과한 총 타이머 틱의 수를 추적하는 역할.
 	thread_tick (); // 이 함수는 현재 실행 중인 스레드에 대한 타이머 틱 처리를 수행. 예를 들어, 스레드의 시간 할당량(time quantum)을 감소시키거나, 스레드의 상태를 관리하는 데 사용될 수 있음.
+	/*mlfqs 옵션이 들어왔을 때에만 advanced scheduler 가 작동할 수 있도록 
+	if 문으로 묶고 각 시간에 맞게 priority, recent_cpu, load_avg 값의 조정이 실행되게 한다. 
+	TIMER_FREQ 값은 1초에 몇 개의 ticks 이 실행되는지를 나타내는 값으로 thread.h 에 100 으로 정의되어 있다. 
+	이에 따라 pintos kernel 은 1 초에 100 ticks 가 실행되고 1 ticks = 1 ms 를 의미한다.*/
+	if (thread_mlfqs) { // mlgqs 방식을 사용하면
+    	mlfqs_increment_recent_cpu (); // 1 tick마다 running 스레드의 recent_cpu값에 +1 을 해줌
+    	if (ticks % 4 == 0) { // 4tick 마다 모든 스레드의 priority 재계산
+      		mlfqs_recalculate_priority ();
+      		if (ticks % TIMER_FREQ == 0) { // 1초마다 모든 스레드의 recent_cpu 값과 load_avg 값을 재계산함.
+        		mlfqs_recalculate_recent_cpu ();
+        		mlfqs_calculate_load_avg ();
+      }
+    }
+  }
+	
 	//thread_awake(ticks); // ticks 값을 기반으로 대기 중인 스레드 중에서 깨워야 할 스레드가 있는지를 확인하고, 깨워야 할 시간이 도달한 스레드를 준비 상태로 변경
 	/*-----------------------------global min_tick_to_awake 사용---------------------------------------*/
 	// sleep_list에서 대기중인 스레드들의 wakeup_tick값 중 최솟값을 사용하여 불필요하게 타이머 인터럽트가 발생할 때 마다 thead_wake함수를 호출하여 대기 큐를 확인 하지 않도록 하는 방법

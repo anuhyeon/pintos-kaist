@@ -28,6 +28,12 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+/*4.4 BSD scheduling*/
+#define PRI_MAX 63               
+#define NICE_DEFAULT 0
+#define RECENT_CPU_DEFAULT 0
+#define LOAD_AVG_DEFAULT 0
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -127,8 +133,13 @@ struct thread { // 각 스레드나 사용자 프로세스를 관리하기 위�
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
+	/*------------PROJECT1 4.4 BSD SCHEDULING-----------*/ //새로운 변수를 추가하면 초기화도 꼭 신경 써줄것 -> init_thread 함수를 수정하러 가라는 뜻
+	int nice;
+	int recent_cpu;
+
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+	struct list_elem allelem; // 리스트 요소 추가
 
 	int64_t wakeup_tick; // 스레드마다 일어나야 하는 시간에 대한 정보를 담고 있어야하는데 이르 wakeup변수에 저장 
 
@@ -150,8 +161,10 @@ struct thread { // 각 스레드나 사용자 프로세스를 관리하기 위�
 	이는 이 스레드가 수혜자(donee)로서, 다른 스레드들이 자신에게 기부한 우선 순위 정보를 저장.
 	
 	즉, A라는 스레드가 B스레드에게 우선순위를 양보를 하면
-	B스레드의 donations에는 A라는 스레드의 A스레드의 donation_elem 와 다른 기부자들의 donations_elem이 정렬되어 저장되어있음.
-	*/
+	B스레드의 donations에는 A라는 스레드의 A스레드의 donation_elem 와 다른 기부자들의 donations_elem이 정렬되어 저장되어있음. */
+
+	
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
@@ -204,7 +217,13 @@ void reset_priority (void); // donations리스트 sort후 가장 높은 스레�
 void remove_with_lock (struct lock *lock); // 락을 해제하면 해당 락을 
 bool thread_cmp_donate_priority (const struct list_elem *l, const struct list_elem *s, void *aux UNUSED);
 bool cmp_sema_priority (const struct list_elem *l, const struct list_elem *s, void *aux);
-
+//project_1 (Priority_Scheduling) - BSD mlfqs
+void mlfqs_calculate_priority (struct thread *t);
+void mlfqs_calculate_recent_cpu (struct thread *t);
+void  mlfqs_calculate_load_avg (void);
+void mlfqs_increment_recent_cpu (void);
+void mlfqs_recalculate_recent_cpu (void);
+void mlfqs_recalculate_priority (void);
 
 int thread_get_priority (void); // 실행중인 스레드의 우선순위를 반환하는 함수
 void thread_set_priority (int); // 실행중인 스레드의 우선순위를 변경하는 함수
