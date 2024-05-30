@@ -9,7 +9,7 @@
 /* A directory. */
 struct dir {
 	struct inode *inode;                /* Backing store. */
-	off_t pos;                          /* Current position. */
+	off_t pos;                          /* Current position.파일 내에서의 상대적 위치 정보, 디렉토리 파일 내에서의 위치를 나타내는 오프셋 값, 디렉토리 내의 특정 엔트리에 접근하기 위해 가용되는 바이트 단위의 위치를 가리킴 */
 };
 
 /* A single directory entry. */

@@ -1,10 +1,11 @@
 #ifndef THREADS_THREAD_H
 #define THREADS_THREAD_H
-
+#define USERPROG
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -34,6 +35,10 @@ typedef int tid_t;
 #define RECENT_CPU_DEFAULT 0
 #define LOAD_AVG_DEFAULT 0
 
+
+/* ----------------- project 2 system call ---------------- */
+#define FDT_PAGES 3 //파일 디스크립터 테이블을 저장하기 위해 할당할 페이지 수를 정의, 여기서는 3 페이지를 할당하고 있음 -> 한 페이지의 크기는 1>>12로 4096바이트이다. 파일 구조체 주소의 크기는 8바이트로 한페이지당 512개씩 파일 구조체 주소를 할당 받을 수 있음.
+#define FDT_COUNT_LIMIT FDT_PAGES *(1<<9) //3 * (2**9) =3 * 512-> fdt는 최대 1536개의 파일 디스크립터를 관리할 수 있음. limit fd_idx FDT에서 관리할 수 있는 파일 디스크립터의 최대 수를 계산합니다. 계산은 할당된 페이지 수(FDT_PAGES)와 페이지 당 저장할 수 있는 파일 디스크립터 수의 곱으로 이루어짐.
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -163,8 +168,6 @@ struct thread { // 각 스레드나 사용자 프로세스를 관리하기 위�
 	즉, A라는 스레드가 B스레드에게 우선순위를 양보를 하면
 	B스레드의 donations에는 A라는 스레드의 A스레드의 donation_elem 와 다른 기부자들의 donations_elem이 정렬되어 저장되어있음. */
 
-	
-
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
@@ -177,6 +180,21 @@ struct thread { // 각 스레드나 사용자 프로세스를 관리하기 위�
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
+
+	/* --------------- Project2 User programs system call --------------- */
+	int exit_status; // _exit(), _wait() 구현 때 사용
+	struct file **fdt; // 운영체제는 프로세스마다 파일 디스크립터를 따로 관리한다. 핀토스에서는 프로세스 = 스레드이므로, 스레드 구조체에 파일 디스크립터를 관리하는 테이블(FDT)을 하나 생성. 스레드마다 가지고 있는 이 배열이 어떤 파일이 열려있는지를 관리.
+	int next_fd ; // 해당 스레드에서 여러 파일을 관리하게될텐데, 이때 해당 파일에 대한 인덱스 값을 넣기 위한 용도인 fd_idx를 선언
+	//fork() 구현
+	struct list child_list; // 해당 스레드가 생성한 자식을의 목록을 관리 -> 부모 스레드는 이 리스트를 사용하여 자신의 모든 자식 스레드를 추적하고, 필요에 따라 각 자식 스레드에 접근 할 수 있음.
+	struct list_elem child_elem; // child_elem은 자신 스레드를 부모 스레드의 child_list에 연결하기 위해 사용되는 요소이다. 이 필드는 부모 스레드의 자식 리스트에 스레드를 삽입하는데 사용(노드의 기능, 즉 각 스레드 객체는 자신의 child_elem 필드를 사용하여 부모 스레드의 'child_list'에 연결된다. 
+	struct intr_frame parent_if;
+	struct semaphore fork_sema;
+	struct semaphore wait_sema;
+	struct semaphore free_sema;
+
+
+
 };
 
 /* If false (default), use round-robin scheduler.

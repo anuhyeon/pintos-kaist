@@ -76,17 +76,19 @@ filesys_create (const char *name, off_t initial_size) {
  * Returns the new file if successful or a null pointer
  * otherwise.
  * Fails if no file named NAME exists,
- * or if an internal memory allocation fails. */
+ * or if an internal memory allocation fails.
+ * filesys_open()함수는 주어진 파일 이름에 대해 파일 시스템에서 해당 파일을 찾고 해당 파일을 조작할 수 있는 sturct file객체를 반환하는 역할을 수행하는 함수
+ *  */
 struct file *
-filesys_open (const char *name) {
-	struct dir *dir = dir_open_root ();
-	struct inode *inode = NULL;
+filesys_open (const char *name) { // 파일 시스템에서 주어진 이름(name)의 파일을 열기 위한 함수이다. filesys_open함수는 파일 이름을 받아 해당 파일에 대한 파일 객체(struct file)을 반환한다. 파일 객체는 파일에 대한 읽기, 쓰기, 닫기 등의 작업을 수행할 때 사용
+	struct dir *dir = dir_open_root (); // 루트 디렉토리(파일 시스템이 최상위 디렉토리)를 열어 struct dir 객체를 반환
+	struct inode *inode = NULL; // inode는 NULL로 초기화
 
-	if (dir != NULL)
-		dir_lookup (dir, name, &inode);
-	dir_close (dir);
+	if (dir != NULL) 
+		dir_lookup (dir, name, &inode); // dirlookup함수는 dir 디렉토리에서 name이라는 이름을 가진 파일을 찾아서 그 파일의 inode 정보를 inode 포인터 변수에 저장 -> dir_lookup 함수는 파일이 존재하면 해당 파일의 inode 구조체를 inode 변수에 연결하고, 파일이 존재하지 않으면 inode는 NULL로 유지
+	dir_close (dir); // 파일 탐색이 끝나면 더 이상 디렉토라 객체가 필요하지 않으므로 dir_close함수를 호출하여 디렉토리를 닫음. -> 열린 디렉토리 자원을 정리하는 과정
 
-	return file_open (inode);
+	return file_open (inode); // file_open 함수는 inode를 인자로 받아 해당 inode를 갖는 파일 객체(struct file)을 생성하고 반환
 }
 
 /* Deletes the file named NAME.

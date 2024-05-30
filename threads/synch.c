@@ -82,6 +82,7 @@ sema_down (struct semaphore *sema) { // 세마포의 down 연산(세마포 값�
 
 	old_level = intr_disable (); // 현재 인터럽트 상태를 비활성화하고 이전 상태를 old_level에 저장 -> 코드 실행동안 인터럽트가 발생하지 않도록 보장하기 위해서
 	while (sema->value == 0) {  // 세마포 값이 0인 경우
+      //printf("여기지롱~!\n");
 		//list_push_back (&sema->waiters, &thread_current ()->elem); // 현재 스레드를  waiter리스트에 삽입 
 		list_insert_ordered(&sema->waiters,&thread_current()->elem,cmp_priority,NULL);
       thread_block (); // 현재스레드를 대기상태로 전환

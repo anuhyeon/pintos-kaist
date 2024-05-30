@@ -14,14 +14,14 @@ struct file {
  * and returns the new file.  Returns a null pointer if an
  * allocation fails or if INODE is null. */
 struct file *
-file_open (struct inode *inode) {
+file_open (struct inode *inode) { // inode를 인자로 받아 해당 inode를 갖는 파일 객체(struct file)를 생성하고 반환
 	struct file *file = calloc (1, sizeof *file);
-	if (inode != NULL && file != NULL) {
-		file->inode = inode;
+	if (inode != NULL && file != NULL) { // inode가 NULL이 아니면 해당 파일이 존재한단 의미이므로 파일을 조작할 수 있는 struct file 객체를 반환하여 파일 읽기, 쓰기 등의 작업을 가능하게 한다.
+		file->inode = inode; 
 		file->pos = 0;
 		file->deny_write = false;
 		return file;
-	} else {
+	} else { // inode가 NULL 이면 해당 파일이 존재하지 않는다는 ㅇ의미로 NULL 반환
 		inode_close (inode);
 		free (file);
 		return NULL;

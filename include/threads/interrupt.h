@@ -17,7 +17,7 @@ enum intr_level intr_disable (void);
 
 /* Interrupt stack frame. */
 struct gp_registers {
-	uint64_t r15;
+	uint64_t r15; //  %0 -> 해당 구조체가 들어있는 메모리에서 가장 낮은 값의 주소를 갖음.
 	uint64_t r14;
 	uint64_t r13;
 	uint64_t r12;
@@ -37,7 +37,7 @@ struct gp_registers {
 struct intr_frame {
 	/* Pushed by intr_entry in intr-stubs.S.
 	   These are the interrupted task's saved registers. */
-	struct gp_registers R;
+	struct gp_registers R; // 기존 스레드가 CPU에서 작업하고 있을 때의 작업 내역들(레지스터들의 값)을 인터럽트가 들어오면 switching 하기 위해 이 구조체에 백업.
 	uint16_t es;
 	uint16_t __pad1;
 	uint32_t __pad2;

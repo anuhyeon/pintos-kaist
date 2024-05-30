@@ -227,6 +227,8 @@ thread_create (const char *name, int priority,
 	t->tf.eflags = FLAG_IF; // eflags 레지스터에 FLAG_IF 값을 설정하여, 스레드가 실행될 때 인터럽트가 가능하도록 함.
 	/*------------------all list 추가 작업------------------------*/
 	//list_push_back(&all_list, &t->allelem);
+	struct thread *curr = thread_current();
+	list_push_back(&curr->child_list, &curr->child_elem);
 
 	/* Add to run queue. */
 	thread_unblock (t); // 해당 스레드를 준비 상태로 변환
@@ -234,11 +236,23 @@ thread_create (const char *name, int priority,
 
 	/* 현재 실행중인 스레드와 새로 생성된 스레드를 비교해서 새로 들어온 스레드의 우선순위가 높으면 CPU 양보*/
 	max_priority_in_ready_preemption();
-	// if (t->priority > thread_current()->priority){
-	// 	thread_yield();
-	// }
 	
+
+	// project 2 system call 
+	//t->fdt = palloc_get_multiple(PAL_ZERO, FDT_PAGES); // 3페이지를 할당해줌 즉 메모리 3x4096 할당후 모든 메모리 위치를 0으로 초기화, 이 메모리를 우리는 8바이트 짜리 파일 구조체 포인터를 저장하는데 사용할 것 -> t-> file_descriptor_table는 할당 받은 메모리 블록의 첫 주소를 가리키게 될것
+	t->fdt = (struct file **)malloc(sizeof(struct file *)*128);
+	if (t->fdt == NULL) { // 할당 실패 했으면	
+		free(t->fdt);
+		return TID_ERROR;
+	}
+
+	t->fdt[0] = 0;//"it's DUMYY"; // 표쥰 입력 -> stdin 자리 
+	t->fdt[1] = 1;//"that's FUckin DUMYY"; // 표쥰 츌력 -> stdout 자리:
+	t->next_fd = 2; // 0은 stdin, 1은 stdout에 이미 할당
 	
+	for(int i = 3; i < 128;i++){
+		t->fdt[i] = NULL;
+	}
 
 	return tid; // 스레드 id 반환
 }
@@ -328,7 +342,6 @@ thread_exit (void) {
 	NOT_REACHED ();
 }
 
-//ㅑ
 
 /*추가한 코드*/
 void update_min_tick_to_awake(int64_t ticks){ // 잠을 자고 있는 스레드들 중에서 최소 틱값으로 전역변수(min_tick_to_awake) 업데이트 
@@ -521,10 +534,10 @@ init_thread (struct thread *t, const char *name, int priority) { // 새로운 �
 	ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
 	ASSERT (name != NULL);
 
-	memset (t, 0, sizeof *t);
+	memset (t, 0, sizeof *t); 
 	t->status = THREAD_BLOCKED;
 	strlcpy (t->name, name, sizeof t->name);
-	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
+	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *); // 메모리 세팅후 스레드 구조체 내 intr_frame 멤버에 해당하는 tf 하위 멤버의 rsp에 커널 스택 포인터를 저장. 현재 t는 스택의 가장 아래 위치를 나타냄. 여기에 page size - sizeof(void *)을 계산하면 스택의 가장 끝 영역을 가리키는데 여기가 커널 스택 포인터의 위치이다. 여기서 그택은  main 스레드의 커널 스택에 해당한다.
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
 
@@ -532,11 +545,23 @@ init_thread (struct thread *t, const char *name, int priority) { // 새로운 �
 	t->init_priority = priority;
 	t->wait_on_lock = NULL;
 	list_init(&t->donations);
+	list_init(&t->child_list);
 	/*4.4 BSD scheduling 관련 자료구조 초기화*/
 	t->nice = NICE_DEFAULT;
   	t->recent_cpu = RECENT_CPU_DEFAULT;
 
+	/*시스템 콜에서 exit_status 초기화 -> _exit(), _wait() 함수 구현시 사용*/
+	t->exit_status = 0;
+    sema_init(&t->fork_sema, 0);
+	sema_init(&t->free_sema, 0);
+    sema_init(&t->wait_sema, 0);
+
+	// for(int i = 3; i < 64; i++){
+	// 	t->fdt[i] == NULL;
+	// }
+
 	list_push_back(&all_list, &t->allelem);
+
 
 }
 
@@ -556,8 +581,8 @@ next_thread_to_run (void) {
 /* Use iretq to launch the thread */
 void
 do_iret (struct intr_frame *tf) {
-	__asm __volatile(
-			"movq %0, %%rsp\n"
+	__asm __volatile( // 처음에 %0을 rsp에 입력한다. 이러면 해당 구조체가 들어있는 메모리에서 가장 낮은 값의 주소를 갖는다.
+			"movq %0, %%rsp\n" // 스택에 저장된 값을 각 레지스터에 복원. 예를 들어, 0(%%rsp)는 %rsp가 가리키는 주소에서 0바이트 오프셋에 있는 값을 %%r15에 복사
 			"movq 0(%%rsp),%%r15\n"
 			"movq 8(%%rsp),%%r14\n"
 			"movq 16(%%rsp),%%r13\n"
@@ -573,11 +598,11 @@ do_iret (struct intr_frame *tf) {
 			"movq 96(%%rsp),%%rcx\n"
 			"movq 104(%%rsp),%%rbx\n"
 			"movq 112(%%rsp),%%rax\n"
-			"addq $120,%%rsp\n"
-			"movw 8(%%rsp),%%ds\n"
-			"movw (%%rsp),%%es\n"
-			"addq $32, %%rsp\n"
-			"iretq"
+			"addq $120,%%rsp\n" // 스택 포인터를 120바이트만큼 증가시켜 레지스터 값들이 저장된 영역을 넘김
+			"movw 8(%%rsp),%%ds\n" // %%ds와 %%es 세그먼트 레지스터를 스택에 저장된 값으로 복원
+			"movw (%%rsp),%%es\n" 
+			"addq $32, %%rsp\n" // 스택 포인터를 32바이트만큼 추가로 증가시켜 인터럽트 프레임의 나머지 부분을 넘김
+			"iretq"  // 인터럽트 리턴, 이는 스택에 저장된 RIP, CS, RFLAGS, RSP, SS 등의 값을 복원 유저 모드로 복귀하는 어셈블리어
 			: : "g" ((uint64_t) tf) : "memory");
 }
 

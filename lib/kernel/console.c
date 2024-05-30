@@ -138,10 +138,10 @@ puts (const char *s) {
 	return 0;
 }
 
-/* Writes the N characters in BUFFER to the console. */
+/* Writes the N characters in BUFFER to the console. putbuf(): 버퍼 안에 들어있는 값 중 사이즈 N만큼을 console로 출력*/
 void
-putbuf (const char *buffer, size_t n) {
-	acquire_console ();
+putbuf (const char *buffer, size_t n) { // 다른 값이 콘솔로 출력되는 것을 막기 위해 동기화 진행 -> 콘솔을 하나의 자원으로 설정하고 console lock을 검.
+	acquire_console (); 
 	while (n-- > 0)
 		putchar_have_lock (*buffer++);
 	release_console ();

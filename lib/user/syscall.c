@@ -1,12 +1,12 @@
 #include <syscall.h>
 #include <stdint.h>
 #include "../syscall-nr.h"
-
+/*각 인자를 적절한 레지스터에 저장한 후, syscall 명령어를 사용하여 시스템 호출을 수행하고, 결과를 반환*/
 __attribute__((always_inline))
 static __inline int64_t syscall (uint64_t num_, uint64_t a1_, uint64_t a2_,
-		uint64_t a3_, uint64_t a4_, uint64_t a5_, uint64_t a6_) {
+		uint64_t a3_, uint64_t a4_, uint64_t a5_, uint64_t a6_) { // 각 인자 (num_, a1_, a2_, a3_, a4_, a5_, a6_)를 포인터로 캐스팅하고, 해당 포인터를 특정 레지스터에 할당
 	int64_t ret;
-	register uint64_t *num asm ("rax") = (uint64_t *) num_;
+	register uint64_t *num asm ("rax") = (uint64_t *) num_; // num 변수는 rax레지스터에 할당
 	register uint64_t *a1 asm ("rdi") = (uint64_t *) a1_;
 	register uint64_t *a2 asm ("rsi") = (uint64_t *) a2_;
 	register uint64_t *a3 asm ("rdx") = (uint64_t *) a3_;
@@ -15,18 +15,18 @@ static __inline int64_t syscall (uint64_t num_, uint64_t a1_, uint64_t a2_,
 	register uint64_t *a6 asm ("r9") = (uint64_t *) a6_;
 
 	__asm __volatile(
-			"mov %1, %%rax\n"
+			"mov %1, %%rax\n"    // rax에 %1(num)을 이동시켜라
 			"mov %2, %%rdi\n"
 			"mov %3, %%rsi\n"
 			"mov %4, %%rdx\n"
 			"mov %5, %%r10\n"
 			"mov %6, %%r8\n"
 			"mov %7, %%r9\n"
-			"syscall\n"
-			: "=a" (ret)
-			: "g" (num), "g" (a1), "g" (a2), "g" (a3), "g" (a4), "g" (a5), "g" (a6)
+			"syscall\n"      // 시스템 호출을 진짜 수행하는 어셈블리 명령어
+			: "=a" (ret)     // "=a" (ret): 출력 피연산자, 시스템 호출의 반환 값을 ret 변수에 저장
+			: "g" (num), "g" (a1), "g" (a2), "g" (a3), "g" (a4), "g" (a5), "g" (a6) // "g" (num), "g" (a1), "g" (a2), "g" (a3), "g" (a4), "g" (a5), "g" (a6): 입력 피연산자. 각 입력 인자를 어셈블리 코드에 전달.
 			: "cc", "memory");
-	return ret;
+	return ret; // 시스템 호출의 반환 값을 반환
 }
 
 /* Invokes syscall NUMBER, passing no arguments, and returns the

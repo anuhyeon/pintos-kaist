@@ -84,7 +84,7 @@ fsutil_put (char **argv) {
 	off_t size;
 	void *buffer;
 
-	printf ("Putting '%s' into the file system...\n", file_name);
+	printf ("Putting '%s' into the file system...\n", file_name); // argv[0] = 'put' ,  argv[1] = 'args-single' ,  argv[2] = 'run' ,  argv[3] = 'args-single onearg'
 
 	/* Allocate buffer. */
 	buffer = malloc (DISK_SECTOR_SIZE);

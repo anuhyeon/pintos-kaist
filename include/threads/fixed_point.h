@@ -26,6 +26,7 @@ int sub_fp (int x, int y) {
   return x - y;
 }
 
+
 int add_mixed (int x, int n) {
   return x + n * F;
 }
